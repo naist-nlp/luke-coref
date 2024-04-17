@@ -58,6 +58,8 @@ Datasets must be in the JSON Lines format, where each line represents a **docume
 }
 ```
 
+Note that <ins>this implementation does not provide an end-to-end system</ins>. Thus, mention recognition must be performed in advance.
+
 ### Fine-tuning
 
 ```py
