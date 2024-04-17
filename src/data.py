@@ -13,7 +13,7 @@ from transformers import (
 logger = logging.getLogger(__name__)
 
 
-class Entity(TypedDict):
+class Mention(TypedDict):
     start: int
     end: int
     entity_id: str
@@ -21,7 +21,7 @@ class Entity(TypedDict):
 
 class Example(TypedDict):
     text: str
-    entities: List[Entity]
+    mentions: List[Mention]
 
 
 class Preprocessor:
@@ -55,12 +55,12 @@ class Preprocessor:
             entities = []
             entity_spans = []
 
-            for ent in example["entities"]:
+            for mention in example["mentions"]:
                 mention_idx += 1
-                entities.append(text[ent["start"] : ent["end"]])
-                entity_spans.append((ent["start"], ent["end"]))
+                entities.append(text[mention["start"] : mention["end"]])
+                entity_spans.append((mention["start"], mention["end"]))
 
-                entity_id = ent["entity_id"]
+                entity_id = mention["entity_id"]
                 assert entity_id
                 if entity_id not in clusters:
                     clusters[entity_id] = []

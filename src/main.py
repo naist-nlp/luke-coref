@@ -1,7 +1,8 @@
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Set
 
 import torch
 from datasets import load_dataset
@@ -99,6 +100,12 @@ def main(args: Arguments, training_args: TrainingArguments):
         if training_args.save_strategy != "no":
             trainer.save_metrics("predict", result.metrics)
 
+        if trainer.is_world_process_zero():
+            predictions = predict(result.predictions, raw_datasets["test"])
+            output_file = Path(training_args.output_dir).joinpath("test_predictions.jsonl")
+            with open(output_file, mode="w") as f:
+                dump(f, raw_datasets["test"], predictions, entity_id_format="E{}")
+
 
 def _preprocess_logits(logits, labels, max_label_size=128, padding_value=-float("inf")):
     return torch.nn.functional.pad(
@@ -119,7 +126,7 @@ def _compute_metrics(p: EvalPrediction, max_label_size=128, padding_index=-100):
 def predict(logits, dataset):
     outputs = []
     for antecedents, document in zip(logits.argmax(axis=-1), dataset):
-        num_mentions = sum(len(example["entities"]) for example in document["examples"])
+        num_mentions = sum(len(example["mentions"]) for example in document["examples"])
         links = [(idx, antecedent) for idx, antecedent in enumerate(antecedents[:num_mentions])]
         clusters = []
         while len(links) > 0:
@@ -137,6 +144,30 @@ def predict(logits, dataset):
             links = remaining
         outputs.append(clusters)
     return outputs
+
+
+def dump(writer, dataset, predictions: List[List[Set[int]]], entity_id_format="{}"):
+    encoder = json.JSONEncoder(ensure_ascii=False, separators=(",", ":"))
+
+    for document, clusters in zip(dataset, predictions):
+        outputs: List[Dict] = []
+
+        mentions: List[Dict] = []
+        for example in document["examples"]:
+            output = {"id": example["id"], "text": example["text"], "mentions": []}
+            for mention in example["mentions"]:
+                mention = dict(mention, entity_id=None)
+                mentions.append(mention)
+                output["mentions"].append(mention)
+            outputs.append(output)
+
+        for i, mention_ids in enumerate(sorted(clusters, key=lambda c: min(c))):
+            for mention_id in mention_ids:
+                mentions[mention_id]["entity_id"] = entity_id_format.format(i + 1)
+        assert all(mention["entity_id"] is not None for mention in mentions)
+
+        writer.write(encoder.encode({"id": document["id"], "examples": outputs}))
+        writer.write("\n")
 
 
 if __name__ == "__main__":
